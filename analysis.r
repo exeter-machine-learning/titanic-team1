@@ -1,10 +1,13 @@
 require(Hmisc)
+require(plyr)
 require(stringr)
 require(caret)
 
 # Read data
 readData <- function(path.name, file.name, column.types, missing.types) {
-    read.csv(paste(path.name, file.name, sep=""), colClasses=column.types, na.strings=missing.types)
+    read.csv(paste(path.name, file.name, sep=""),
+        colClasses=column.types,
+        na.strings=missing.types)
 }
 
 # File paths
@@ -41,6 +44,7 @@ getTitle <- function(data) {
     title.comma.end <- title.dot.start + attr(title.dot.start, "match.length") - 1
 
     data$Title <- substr(data$Name, title.dot.start + 2, title.comma.end - 1)
+
     return (data$Title)
 }
 
@@ -48,6 +52,18 @@ changeTitle <- function(data, old.titles, new.title) {
     for (title in old.titles) {
         data$Title[which(data$Title == title)] <- new.title
     }
+
+    return (data$Title)
+}
+
+consolidatedTitles <- function(data){
+    data$Title <- getTitle(data)
+    data$Title <- changeTitle(data, c('Capt', 'Col', 'Don', 'Jonkheer', 'Major', 'Sir'), 'Lord')
+    data$Title <- changeTitle(data, c('the Countess', 'Lady', 'Dona'), 'Lady')
+    data$Title <- changeTitle(data, c('Dr', 'Rev'), 'Prof')
+    data$Title <- changeTitle(data, c('Mlle', 'Mme', 'Mrs', 'Miss'), 'Ms')
+    data$Title <- as.factor(data$Title)
+
     return (data$Title)
 }
 
@@ -59,14 +75,18 @@ imputeMedian <- function(impute.var, filter.var, var.levels) {
 }
 
 # Feature normalization
-df.train$Title <- getTitle(df.train)
+featureNorm <- function(data){
+    data$Title <- consolidatedTitles(data)
 
-df.train$Embarked[which(is.na(df.train$Embarked))] <- 'S'
+    data$Embarked[which(is.na(data$Embarked))] <- 'S'
 
-df.train$Fare[which(df.train$Fare == 0 )] <- NA
-df.train$Fare <- imputeMedian(df.train$Fare, df.train$Pclass, as.numeric(levels(df.train$Pclass)))
+    data$Fare[which(data$Fare == 0)] <- NA
+    data$Fare <- imputeMedian(data$Fare, data$Pclass, as.numeric(levels(df.train$Pclass)))
 
-df.train$Age <- imputeMedian(df.train$Age, df.train$Title, c("Dr", "Master", "Mrs", "Miss", "Mr"))
+    data$Age <- imputeMedian(data$Age, data$Title, c("Lord", "Lady", "Master", "Mr", "Ms", "Prof"))
+
+    return (data)
+}
 
 # Feature engineering - helper functions
 isEven <- function(x) x %in% c("0", "2", "4", "6", "8")
@@ -75,7 +95,10 @@ isOdd <- function(x) x %in% c("1", "3", "5", "7", "9")
 
 # Feature engineering
 featureEng <- function(data) {
-    data$FamilySize <- data$SibSp + data$Parch
+    data$Fate <- data$Survived
+    data$Fate <- revalue(data$Fate, c("1" = "Survived", "0" = "Perished"))
+
+    data$Family <- data$SibSp + data$Parch
 
     data$Deck <- substring(data$Cabin, 1, 1)
     data$Deck[which(is.na(data$Deck))] <- "UNK"
@@ -91,14 +114,51 @@ featureEng <- function(data) {
     return (data)
 }
 
-df.train <- featureEng(df.train)
-train.keeps <- c("Survived", "Sex", "Age", "Pclass", "Deck", "Side", "Fare", "Embarked", "FamilySize")
-df.train.munged <- df.train[train.keeps]
+train.keeps <- c("Fate", "Sex", "Age", "Pclass", "Deck", "Side", "Fare", "Embarked", "Family", "Title")
+
+df.train.normalized <- featureNorm(df.train)
+df.train.munged <- featureEng(df.train.normalized)[train.keeps]
 
 set.seed(23)
-training.rows <- createDataPartition(df.train.munged$Survived, p= 0.8, list = FALSE)
+training.rows <- createDataPartition(df.train.munged$Fate, p = 0.8, list = FALSE)
 train.batch <- df.train.munged[training.rows,]
 test.batch <- df.train.munged[-training.rows,]
 
-# Logistic regression
-Titanic.logit.1 <- glm(Survived ~ Sex + Age + Pclass + Deck + Side + Embarked + FamilySize, data = train.batch, family = binomial("logit"))
+# Logistic regression models
+Titanic.logit.1 <- glm(Fate ~ Sex + Age + Pclass + Embarked + Title + Family + Deck + Side, data = train.batch, family = binomial("logit"))
+
+cv.ctrl <- trainControl(method = "repeatedcv",
+    repeats = 3,
+    summaryFunction = twoClassSummary,
+    classProb = TRUE)
+
+set.seed(35)
+glm.tune.1 <- train(Fate ~ Sex + Age + Pclass + Embarked + Title + Family + Deck + Side,
+    data = train.batch,
+    method = "glm",
+    metric = "ROC",
+    trControl = cv.ctrl)
+
+glm.tune.2 <- train(Fate ~ Sex + Age + Pclass + I(Embarked == "S") + Title + Family + Deck + Side,
+    data = train.batch,
+    method = "glm",
+    metric = "ROC",
+    trControl = cv.ctrl)
+
+df.infer.normalized <- featureNorm(df.infer)
+df.infer.munged <- featureEng(df.infer.normalized)
+
+test.keeps <- train.keeps[-1]
+glm.predict <- df.infer.munged[test.keeps]
+
+Survived <- predict(glm.tune.2, newdata = glm.predict)
+
+Survived <- revalue(Survived, c("Survived" = 1, "Perished" = 0))
+predictions <- as.data.frame(Survived)
+predictions$PassengerId <- df.infer$PassengerId
+
+write.csv(predictions[,c("PassengerId", "Survived")],
+    file = "output/predictions1.csv",
+    row.names = FALSE,
+    quote = FALSE)
+

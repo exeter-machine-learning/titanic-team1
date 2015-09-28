@@ -58,9 +58,7 @@ changeTitle <- function(data, old.titles, new.title) {
 
 consolidatedTitles <- function(data){
     data$Title <- getTitle(data)
-    data$Title <- changeTitle(data, c('Capt', 'Col', 'Don', 'Jonkheer', 'Major', 'Sir'), 'Lord')
-    data$Title <- changeTitle(data, c('the Countess', 'Lady', 'Dona'), 'Lady')
-    data$Title <- changeTitle(data, c('Dr', 'Rev'), 'Prof')
+    data$Title <- changeTitle(data, c('Capt', 'Col', 'Don', 'Jonkheer', 'Major', 'Sir', 'the Countess', 'Lady', 'Dona', 'Dr', 'Rev'), 'Noble')
     data$Title <- changeTitle(data, c('Mlle', 'Mme', 'Mrs', 'Miss'), 'Ms')
     data$Title <- as.factor(data$Title)
 
@@ -83,7 +81,9 @@ featureNorm <- function(data){
     data$Fare[which(data$Fare == 0)] <- NA
     data$Fare <- imputeMedian(data$Fare, data$Pclass, as.numeric(levels(df.train$Pclass)))
 
-    data$Age <- imputeMedian(data$Age, data$Title, c("Lord", "Lady", "Master", "Mr", "Ms", "Prof"))
+    data$Age <- imputeMedian(data$Age, data$Title, c("Noble", "Master", "Mr", "Ms"))
+
+    data$Pclass <- factor(test$Pclass, levels = c(3,2,1), ordered = TRUE)
 
     return (data)
 }
@@ -133,13 +133,29 @@ cv.ctrl <- trainControl(method = "repeatedcv",
     classProb = TRUE)
 
 set.seed(35)
-glm.tune.1 <- train(Fate ~ Sex + Age + Pclass + Embarked + Title + Family + Deck + Side,
+# 76.077%
+glm.tune.0 <- train(Fate ~ Sex + Age + Pclass + Embarked + Title + Family + Deck + Side,
     data = train.batch,
     method = "glm",
     metric = "ROC",
     trControl = cv.ctrl)
 
-glm.tune.2 <- train(Fate ~ Sex + Age + Pclass + I(Embarked == "S") + Title + Family + Deck + Side,
+# 76.555%
+glm.tune.1 <- train(Fate ~ Sex + Age + Pclass + I(Embarked == "S") + Title + Family + Deck + Side,
+    data = train.batch,
+    method = "glm",
+    metric = "ROC",
+    trControl = cv.ctrl)
+
+# 76.077%
+glm.tune.2 <- train(Fate ~ Pclass + I(Title=="Mr") + I(Title=="Lady") + Age + Family + I(Embarked=="S") + I(Title=="Mr"&Pclass=="Third"),
+    data = train.batch,
+    method = "glm",
+    metric = "ROC",
+    trControl = cv.ctrl)
+
+# 76.077%
+glm.tune.3 <- train(Fate ~ Sex + Age + Pclass + Family,
     data = train.batch,
     method = "glm",
     metric = "ROC",
@@ -151,14 +167,14 @@ df.infer.munged <- featureEng(df.infer.normalized)
 test.keeps <- train.keeps[-1]
 glm.predict <- df.infer.munged[test.keeps]
 
-Survived <- predict(glm.tune.2, newdata = glm.predict)
+Survived <- predict(glm.tune.3, newdata = glm.predict)
 
 Survived <- revalue(Survived, c("Survived" = 1, "Perished" = 0))
 predictions <- as.data.frame(Survived)
 predictions$PassengerId <- df.infer$PassengerId
 
 write.csv(predictions[,c("PassengerId", "Survived")],
-    file = "output/predictions1.csv",
+    file = "output/predictions3.csv",
     row.names = FALSE,
     quote = FALSE)
 

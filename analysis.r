@@ -183,19 +183,46 @@ glm.tune.5 <- train(Fate ~ isChild + Age + Pclass
     metric = "ROC",
     trControl = cv.ctrl)
 
+# 78.947%
+glm.tune.6 <- train(Fate ~ isChild + Sex + Pclass
+    + I(Title=="Mr") + I(Title=="Noble") + I(Embarked=="S")
+    + I(Title=="Mr"&Pclass==3),
+    data = train.batch,
+    method = "glm",
+    metric = "ROC",
+    trControl = cv.ctrl)
+
+# 76.555%
+glm.tune.7 <- train(Fate ~ isChild + Sex + Pclass + Family
+    + I(Title=="Mr") + I(Title=="Noble") + I(Embarked=="S")
+    + I(Title=="Mr"&Pclass==3),
+    data = train.batch,
+    method = "glm",
+    metric = "ROC",
+    trControl = cv.ctrl)
+
+# 78.947%
+glm.tune.8 <- train(Fate ~ isChild + Sex + Pclass
+    + I(Title=="Mr") + I(Title=="Noble") + I(Embarked=="S")
+    + I(Title=="Mr"&Pclass==3),
+    data = train.batch,
+    method = "glmnet",
+    metric = "ROC",
+    trControl = cv.ctrl)
+
 df.infer.normalized <- featureNorm(df.infer)
 df.infer.munged <- featureEng(df.infer.normalized)
 
 test.keeps <- train.keeps[-1]
 glm.predict <- df.infer.munged[test.keeps]
 
-Survived <- predict(glm.tune.5, newdata = glm.predict)
+Survived <- predict(glm.tune.9, newdata = glm.predict)
 
 Survived <- revalue(Survived, c("Survived" = 1, "Perished" = 0))
 predictions <- as.data.frame(Survived)
 predictions$PassengerId <- df.infer$PassengerId
 
 write.csv(predictions[,c("PassengerId", "Survived")],
-    file = "output/predictions5.csv",
+    file = "output/predictions9.csv",
     row.names = FALSE,
     quote = FALSE)

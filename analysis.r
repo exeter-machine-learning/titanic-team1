@@ -58,8 +58,9 @@ changeTitle <- function(data, old.titles, new.title) {
 
 consolidatedTitles <- function(data){
     data$Title <- getTitle(data)
-    data$Title <- changeTitle(data, c('Capt', 'Col', 'Don', 'Jonkheer', 'Major', 'Sir', 'the Countess', 'Lady', 'Dona', 'Dr', 'Rev'), 'Noble')
-    data$Title <- changeTitle(data, c('Mlle', 'Mme', 'Mrs', 'Miss'), 'Ms')
+    data$Title <- changeTitle(data, c('Capt', 'Col', 'Don', 'Jonkheer', 'Major', 'Sir', 'Lady', 'Dr', 'Rev'), 'Noble')
+    data$Title <- changeTitle(data, c('the Countess', 'Dona', 'Ms'), 'Mrs')
+    data$Title <- changeTitle(data, c('Mlle', 'Mme'), 'Miss')
     data$Title <- as.factor(data$Title)
 
     return (data$Title)
@@ -81,9 +82,7 @@ featureNorm <- function(data){
     data$Fare[which(data$Fare == 0)] <- NA
     data$Fare <- imputeMedian(data$Fare, data$Pclass, as.numeric(levels(df.train$Pclass)))
 
-    data$Age <- imputeMedian(data$Age, data$Title, c("Noble", "Master", "Mr", "Ms"))
-
-    data$Pclass <- factor(test$Pclass, levels = c(3,2,1), ordered = TRUE)
+    data$Age <- imputeMedian(data$Age, data$Title, c("Noble", "Master", "Mr", "Mrs", "Miss"))
 
     return (data)
 }
@@ -97,6 +96,9 @@ isOdd <- function(x) x %in% c("1", "3", "5", "7", "9")
 featureEng <- function(data) {
     data$Fate <- data$Survived
     data$Fate <- revalue(data$Fate, c("1" = "Survived", "0" = "Perished"))
+
+    data$isChild <- "No"
+    data$isChild[which(data$Age < 15)] <- "Yes"
 
     data$Family <- data$SibSp + data$Parch
 
@@ -173,8 +175,8 @@ Survived <- revalue(Survived, c("Survived" = 1, "Perished" = 0))
 predictions <- as.data.frame(Survived)
 predictions$PassengerId <- df.infer$PassengerId
 
-write.csv(predictions[,c("PassengerId", "Survived")],
-    file = "output/predictions3.csv",
-    row.names = FALSE,
-    quote = FALSE)
+# write.csv(predictions[,c("PassengerId", "Survived")],
+#     file = "output/predictions3.csv",
+#     row.names = FALSE,
+#     quote = FALSE)
 

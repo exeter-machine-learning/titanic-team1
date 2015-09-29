@@ -116,7 +116,7 @@ featureEng <- function(data) {
     return (data)
 }
 
-train.keeps <- c("Fate", "Sex", "Age", "Pclass", "Deck", "Side", "Fare", "Embarked", "Family", "Title")
+train.keeps <- c("Fate", "Sex", "isChild", "Age", "Pclass", "Deck", "Side", "Fare", "Embarked", "Family", "Title")
 
 df.train.normalized <- featureNorm(df.train)
 df.train.munged <- featureEng(df.train.normalized)[train.keeps]
@@ -127,7 +127,9 @@ train.batch <- df.train.munged[training.rows,]
 test.batch <- df.train.munged[-training.rows,]
 
 # Logistic regression models
-Titanic.logit.1 <- glm(Fate ~ Sex + Age + Pclass + Embarked + Title + Family + Deck + Side, data = train.batch, family = binomial("logit"))
+Titanic.logit.1 <- glm(Fate ~ Sex + Age + Pclass + Embarked + Title + Family + Deck + Side,
+        data = train.batch,
+        family = binomial("logit"))
 
 cv.ctrl <- trainControl(method = "repeatedcv",
     repeats = 3,
@@ -163,20 +165,37 @@ glm.tune.3 <- train(Fate ~ Sex + Age + Pclass + Family,
     metric = "ROC",
     trControl = cv.ctrl)
 
+#77.033%
+glm.tune.4 <- train(Fate ~ Sex + Age + Pclass
+    + I(Title=="Mr") + I(Title=="Noble") + I(Embarked=="S")
+    + I(Title=="Mr"&Pclass==3),
+    data = train.batch,
+    method = "glm",
+    metric = "ROC",
+    trControl = cv.ctrl)
+
+# 77.990%
+glm.tune.5 <- train(Fate ~ isChild + Age + Pclass
+    + I(Title=="Mr") + I(Title=="Noble") + I(Embarked=="S")
+    + I(Title=="Mr"&Pclass==3),
+    data = train.batch,
+    method = "glm",
+    metric = "ROC",
+    trControl = cv.ctrl)
+
 df.infer.normalized <- featureNorm(df.infer)
 df.infer.munged <- featureEng(df.infer.normalized)
 
 test.keeps <- train.keeps[-1]
 glm.predict <- df.infer.munged[test.keeps]
 
-Survived <- predict(glm.tune.3, newdata = glm.predict)
+Survived <- predict(glm.tune.5, newdata = glm.predict)
 
 Survived <- revalue(Survived, c("Survived" = 1, "Perished" = 0))
 predictions <- as.data.frame(Survived)
 predictions$PassengerId <- df.infer$PassengerId
 
-# write.csv(predictions[,c("PassengerId", "Survived")],
-#     file = "output/predictions3.csv",
-#     row.names = FALSE,
-#     quote = FALSE)
-
+write.csv(predictions[,c("PassengerId", "Survived")],
+    file = "output/predictions5.csv",
+    row.names = FALSE,
+    quote = FALSE)
